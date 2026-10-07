@@ -109,7 +109,7 @@ for ax, scene in zip(axes, scenes_with_any_slamio):
 
 fig.suptitle(
     "Tracking error vs. frame number: splatonic-monogs reuse (solid) vs. slamio-final GradReuse (dashed)\n"
-    "PARTIAL -- only completed runs shown; N>=2 and some scenes still running",
+    "Full N=1..4 sweep, baseline + N=1..4, all three scenes",
     fontsize=11, y=1.0,
 )
 fig.tight_layout()
