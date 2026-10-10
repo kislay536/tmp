@@ -1,0 +1,4 @@
+model,dataset,scene,optimization_type,gpu,compute_location,total_time_s,tracking_ms_per_frame,tracking_ms_per_iter,mapping_ms_per_frame,mapping_ms_per_iter,ate_cm,psnr_db,tracking_iters_per_frame,mapping_iters_per_frame
+SplaTAM,TUM,fr1_desk,slamio_baseline,Thor,local,5694.0,8041.114587638828,41.660435180681446,1417.9535387335598,53.08249892237457,3.45,22.08,193.01561668197866,26.71226049111046
+SplaTAM,TUM,fr1_desk,slamio_optimization,Thor,local,1952.0,1736.152162020271,25.240561874352533,1399.010261571085,52.3020148465607,3.38,22.8,68.78421212106264,26.74868770687678
+SplaTAM,Replica,room0,slamio_baseline,Thor,local,36540.0,5996.6040761470795,149.91434979224098,11689.78456234932,194.8165928999583,0.31,32.09,40.00020067763681,60.00404990324529
