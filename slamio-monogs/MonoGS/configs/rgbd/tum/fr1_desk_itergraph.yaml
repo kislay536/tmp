@@ -1,0 +1,101 @@
+# MonoGS tracking iteration graph, TUM fr1_desk, full sequence.
+#
+# Run configs/rgbd/tum/fr1_desk_itergraph_smoke.yaml FIRST. It costs seconds
+# and catches capture failures that cost a full run here.
+#
+# WHAT TO COMPARE AGAINST. fr1_desk_nograph.yaml, which is this file with
+# iteration_graph.enabled=False and NOTHING else changed. Do not compare
+# against main or against MonoGS's own baseline (726.658s, ATE 1.4907cm):
+# several changes on this branch move numbers independently of the graph, and
+# the capture-safe pose path in particular changes floating-point roundoff
+# (it removes three matrix inversions per render). Compare against the parent
+# rung, not an earlier one.
+#
+# WHAT TO COMPARE. Tracking ms/iter, not wall time. With early stopping on the
+# two arms run different iteration counts, so per-frame and total times are not
+# comparable; ms/iter is. Mapping ms/iter is the control - a tracking-side
+# change cannot touch it, so if it moves, something else did.
+#
+# PREDICTION, written before the run. SplaTAM got 2.71x from this because a
+# tracking iteration there issues ~230 kernel launches against ~200 iterations
+# per frame, so cudaGraphInstantiate amortises over ~115 replays. MonoGS's
+# budget is tracking_itr_num=100, half that, so the instantiate cost is spread
+# over half as many replays and the multiplier should be correspondingly
+# smaller. The mechanism has no obvious reason to be model-specific, but the
+# amortisation does - the same reasoning predicted the graph would underperform
+# on Replica's ~20-iteration frames.
+inherit_from: "configs/rgbd/tum/fr1_desk.yaml"
+
+Training:
+  binning_capacity:
+    enabled: True
+    # Must be <= iteration_graph.warmup_iters so the capacity is frozen before
+    # the capture iteration runs.
+    warmup_iters: 3
+    margin: 1.5
+    # 400000 -> 150000. MEASURED on the 100-frame run: observed max averaged
+    # 110520, so the 400000 floor was binding on every frame and sizing the
+    # sort at +262% of what was needed. margin=1.5 already gives 165k of
+    # headroom over the observed max; the floor is only meant to catch frames
+    # where the observed value is anomalously small, not to be the operating
+    # point.
+    #
+    # This is not free headroom being given up: an overflow means
+    # duplicateWithKeys DROPPED instances and that frame's render is wrong, and
+    # the policy is reactive - it cannot prevent the first corruption. Watch
+    # the overflow count. It was 0/99 at the old value; if the new one ever
+    # reports a non-zero count, raise this rather than trusting the
+    # self-raising margin.
+    #
+    # The sort is only ~6.7% of real kernel time (measured on the
+    # binning-reuse-cache branch, which is why that optimisation was a null),
+    # so this is worth a few percent, not a multiple.
+    min_capacity: 150000
+
+  iteration_graph:
+    enabled: True
+    warmup_iters: 5
+    # See the smoke config: MonoGS's concurrent backend shares this CUDA
+    # context, and 'global' would let the backend's kernels abort the
+    # frontend's capture.
+    capture_error_mode: "thread_local"
+
+  es_signals:
+    enabled: True
+    batch: 8
+
+  coarse_to_fine:
+    enabled: False
+  pixel_sample:
+    enabled: False
+
+  early_stop:
+    enabled: True
+    # RESCALED FOR THIS MODEL'S BUDGET, and this is the mistake that was made
+    # on the Replica port and caught only by reading a constructor line.
+    #
+    # SplaTAM's min_iters=70 is 35% of its 200-iteration budget. MonoGS's
+    # budget is tracking_itr_num=100, so the same fraction is 35, not 70. Set
+    # it too high and early stopping SILENTLY NEVER FIRES while still logging
+    # enabled=True. retune_min_iters_floor must move with it, or the first
+    # retune's elbow detection drags min_iters down to the class default of 8.
+    #
+    # These are scaled, not measured. The tuned MonoGS values (min_iters 50,
+    # warmup 70) were fitted against the eager loop; whether they hold under
+    # the graph is exactly what this run is for.
+    min_iters: 35
+    warmup_min_iters: 50
+    retune_min_iters_floor: 35
+    loss_eps: 1e-3
+    patience: 3
+    pose_eps: 0.0
+    retune_every: 100
+    retune_frames: 10
+    dataset_frames: 592
+    # The retune stabilisers. These need NO code in MonoGS - EarlyStop is
+    # already live here (set_hyperparams), so they are config-only, which makes
+    # this the cheapest available cross-model check of a result that is so far
+    # fr1_desk-specific and whose cross-scene test was inconclusive.
+    retune_reject_fallback: True
+    retune_max_change: 1.6
+    retune_smooth: 0.5

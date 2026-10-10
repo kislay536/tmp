@@ -1,0 +1,12 @@
+# ScanNet scene0059_00 final arm: the matched preconditioner config plus the
+# same self-calibrating adaptive mapping block used by TUM.
+inherit_from: "configs/rgbd/scannet/scene0059_00_precond_calibrated_diag_native_full.yaml"
+
+Results:
+  save_dir: "results/scannet_scene0059_00_precond_calibrated_diag_native_admap_full"
+
+Training:
+  adaptive_mapping:
+    enabled: True
+    calibration_keyframes: 24
+    calibration_skip: 8

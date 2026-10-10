@@ -1,0 +1,9 @@
+inherit_from: "configs/rgbd/scannet/scene0059_00_async_full.yaml"
+
+# Pure single_thread flip (same convention as the splatonic-/rtgs-monogs *_singlethread_on configs).
+# This codebase reads single_thread from TWO places (BackEnd: Dataset.single_thread, default
+# False; FrontEnd: Training.single_thread) -- set both explicitly.
+Dataset:
+  single_thread: True
+Training:
+  single_thread: True

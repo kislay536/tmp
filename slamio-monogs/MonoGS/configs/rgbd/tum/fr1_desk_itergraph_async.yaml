@@ -1,0 +1,44 @@
+# MonoGS iteration graph, TUM fr1_desk, full sequence, ASYNC BACKEND.
+#
+# WHY THIS EXISTS. base_config.yaml sets use_inline_backend: True, so every
+# config in this tree inherited it, and every MonoGS number measured this
+# session was taken with mapping SERIALISED INTO THE FRONTEND'S CRITICAL PATH.
+# The full-sequence run showed the damage plainly:
+#
+#   total 1209.2s   of which   kf_logic (mapping) 945.7s,  tracking 194.8s
+#
+# against a recorded main baseline of 726.658s / FPS 0.815. Inline mode gives
+# up ALL tracking/mapping overlap - that is what it is for, it was ported from
+# RTGS to test whether removing the cross-process CUDA context split helps -
+# so it is not a valid basis for comparison against an async baseline.
+#
+# With use_inline_backend: False the backend runs as a separate mp.Process with
+# its own CUDA context and mapping overlaps tracking again.
+#
+# WHAT THIS CHANGES FOR THE GRAPH.
+#
+#   Good: the capture no longer shares a process with mapping at all, so the
+#   concurrency risk flagged as most likely to sink this port does not apply.
+#   capture_error_mode could safely be "global" here; left at "thread_local"
+#   since it costs nothing.
+#
+#   Watch: slam.py calls mp.set_start_method("spawn"), so the backend re-imports
+#   camera_utils fresh and does NOT inherit the frontend's capture-safe pose
+#   flag. slam_backend.set_hyperparams now sets it from config for exactly this
+#   reason - without that fix the frontend would drop three torch.linalg.inv
+#   calls per render while the backend kept paying them, and mapping renders far
+#   more than tracking does.
+#
+#   Watch: tracking wall time should barely move versus the inline run (194.8s),
+#   because tracking itself is unchanged. What should collapse is kf_logic. If
+#   tracking moves a lot, something other than the backend mode changed.
+inherit_from: "configs/rgbd/tum/fr1_desk_itergraph.yaml"
+
+Training:
+  # The whole point of this file.
+  use_inline_backend: False
+  # Keeps the backend a separate process AND lets it run its continuous
+  # background-mapping loop. Note this flag does NOT control the context split -
+  # it only changes sync behaviour; use_inline_backend above is what collapses
+  # the processes.
+  single_thread: False

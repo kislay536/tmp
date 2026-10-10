@@ -1,0 +1,9 @@
+inherit_from: "configs/rgbd/replica/room0_precond_calibrated_diag_beta2_async_admap_500.yaml"
+
+# Pure single_thread flip (same convention as the splatonic-/rtgs-monogs *_singlethread_on configs).
+# This codebase reads single_thread from TWO places (BackEnd: Dataset.single_thread, default
+# False; FrontEnd: Training.single_thread) -- set both explicitly.
+Dataset:
+  single_thread: True
+Training:
+  single_thread: True

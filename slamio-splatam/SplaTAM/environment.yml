@@ -1,0 +1,30 @@
+name: splatam
+channels:
+  - pytorch
+  - nvidia
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu121
+    - torch==2.3.1+cu121
+    - torchvision==0.18.1+cu121
+    - torchaudio==2.3.1+cu121
+    - tqdm
+    - Pillow
+    - opencv-python-headless==4.8.1.78
+    - imageio
+    - matplotlib
+    - kornia
+    - natsort
+    - pyyaml
+    - wandb
+    - lpips
+    - open3d
+    - torchmetrics
+    - pytorch-msssim
+    - "numpy<2"
+    - setuptools
+    - faiss-gpu-cu12

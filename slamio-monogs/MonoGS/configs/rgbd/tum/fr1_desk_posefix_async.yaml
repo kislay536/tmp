@@ -1,0 +1,36 @@
+# MonoGS, TUM fr1_desk, full sequence, ASYNC BACKEND, pose fix only (no graph).
+#
+# This is the configuration the evidence currently recommends, run the way the
+# recorded main baseline was run:
+#
+#   - capture-safe pose path ON. Worth essentially the whole win measured at
+#     100 frames; the graph on top was a null (posefix 144.7s in-loop vs graph
+#     145.5s).
+#   - iteration graph OFF. Nothing to collapse once the inversions are gone -
+#     MonoGS's loop is GPU-bound after that.
+#   - early stopping ON, with the retune stabilisers.
+#   - async backend, so mapping overlaps tracking instead of blocking it.
+#
+# COMPARE AGAINST the recorded main baseline: 726.658s, FPS 0.815,
+# ATE 1.4907 cm, PSNR 18.27. That baseline is async, which is exactly why the
+# inline runs from this session could not be compared to it - the inline
+# full-sequence run came out at 1209.2s with 945.7s of that in kf_logic.
+#
+# But note this arm carries THREE changes against that baseline at once - pose
+# fix, early stopping, retune stabilisers - so a difference cannot be
+# attributed to any one of them. For attribution against the pose fix alone,
+# pair it with fr1_desk_nograph_async.yaml.
+#
+# The last inline full-sequence run reported early stopping firing on
+# 485/591 frames (82.1%) at an average iteration of 62, ATE 1.70 cm,
+# PSNR 18.79. min_iters=35 was a value scaled from SplaTAM's budget ratio and
+# has still never been tuned on MonoGS; 82% at iteration 62 is a plausible
+# working point rather than a validated one.
+inherit_from: "configs/rgbd/tum/fr1_desk_itergraph_async.yaml"
+
+Training:
+  iteration_graph:
+    enabled: False
+  # Normally implied by iteration_graph.enabled. Set independently here - this
+  # is what the third arm established as the actual source of the speedup.
+  capture_safe_pose: True

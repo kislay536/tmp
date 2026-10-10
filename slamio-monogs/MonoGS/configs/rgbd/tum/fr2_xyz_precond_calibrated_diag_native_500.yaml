@@ -1,0 +1,40 @@
+# MonoGS TUM fr2_xyz, 500 frames, on the current production preconditioner arm.
+#
+# Inherits fr1_desk_precond_calibrated_diag_native_full.yaml WHOLE - calibrated
+# adaptive diagonal (P1, 24 frames -> fixed median transition), auto_lr, native
+# convergence only, no shared criterion - and changes ONLY the dataset, the
+# frame limit and the output directory. That is the same shape as SplaTAM's
+# splatam_precond_fr2_xyz.py wrapper, and for the same reason: an arm that
+# differs in one thing is readable, one that differs in several is not.
+#
+# THE FULL Calibration BLOCK IS RESTATED, NOT PATCHED. load_config merges
+# recursively, so overriding dataset_path alone would silently keep fr1_desk's
+# intrinsics and distortion coefficients - a run that completes, produces a
+# plausible ATE, and is measuring the wrong camera. The values below are copied
+# verbatim from configs/rgbd/tum/fr2_xyz.yaml.
+#
+# beta2 comes from PRE_BETA2 in the environment (0.98, settled 2026-09-05
+# across two scenes and three models). It is not pinned here so this file
+# cannot drift away from the shared value.
+inherit_from: "configs/rgbd/tum/fr1_desk_precond_calibrated_diag_native_full.yaml"
+
+Results:
+  save_dir: "results/tum_fr2_xyz_precond_calibrated_diag_native_500"
+
+Dataset:
+  dataset_path: "datasets/tum/rgbd_dataset_freiburg2_xyz"
+  frame_limit: 500
+  Calibration:
+    fx: 520.90862
+    fy: 521.007327
+    cx: 325.141442
+    cy: 249.701764
+    k1: 0.2312
+    k2: -0.7849
+    p1: -0.0033
+    p2: -0.0001
+    k3: 0.9172
+    distorted: True
+    width: 640
+    height: 480
+    depth_scale: 5000.0

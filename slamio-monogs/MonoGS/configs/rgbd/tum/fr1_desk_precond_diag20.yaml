@@ -1,0 +1,82 @@
+# MonoGS TUM fr1_desk: handoff-free pose preconditioner candidate.
+#
+# This keeps MonoGS's mapping, keyframe selection, pose representation and
+# auto-calibrated step norm unchanged.  It changes only the pose update rule:
+#
+#   iterations 0..19   full 6x6 second-moment preconditioner
+#   iteration 20       reset the first moment, retain the carried 6x6 M
+#   iterations 20+     diagonal inverse-square-root of that same M
+#
+# The boundary matches the previously measured MonoGS handoff arm exactly, so
+# this tests whether diagonal refinement can replace Adam without changing the
+# acquisition phase or the stopping policy.  The trust region is the
+# estimator's own lr*sqrt(6) bound, as in the accepted SplaTAM arm.
+inherit_from: "configs/rgbd/tum/fr1_desk_posefix_async.yaml"
+
+Training:
+  # A captured iteration cannot change update rule at iteration 20.  MonoGS's
+  # eager/capture-safe pose path is also the measured faster path here.
+  iteration_graph:
+    enabled: False
+
+  # Do not let MonoGS's independent loss-based stopper race the
+  # preconditioner's plateau rule.  The established MonoGS preconditioner
+  # measurements used ES=0 for the same reason.
+  early_stop:
+    enabled: False
+
+  # Shared scale-free pose/loss convergence rule. It is off in the established
+  # diagonal candidate; the runner enables shadow mode for a full-budget trace
+  # before this is ever allowed to control tracking.
+  windowed_convergence:
+    enabled: False
+    shadow: True
+    window: 16
+    # Match the eight-row device-signal drain so a future active decision does
+    # not execute unseen updates past the row that proposed stopping.
+    check_every: 8
+    patience: 2
+    z_threshold: 2.0
+    # The current phase must decay to <=25% of the RMS normalized-step energy
+    # learned from its first complete window before flatness can mean mature.
+    decay_ratio: 0.25
+
+  preconditioner:
+    enabled: True
+    # Preserve MonoGS's own rot/trans scale. During full acquisition this sets
+    # the established fixed norm. During the diagonal tail the frontend passes
+    # the actual [rot=0.003]*3 + [trans=0.001]*3 rate vector, so refinement is
+    # not pinned to that norm. Carrying SplaTAM's scalar 0.004 is not portable.
+    auto_lr: True
+    tau: 0.05
+    beta2: 0.95
+    carry: True
+    refactor_every: 10
+    max_step_mult: 1.0
+    restart_at: 20
+    restart_m: "off"
+    diag_after: 20
+
+    # One optimiser owns the whole frame: no Adam pose handoff.
+    handoff: 0
+
+    # Existing MonoGS preconditioner stopping rule.  The known handoff arm
+    # averaged 53--54 iterations/frame with this policy, leaving enough tail
+    # iterations to make the diagonal phase measurable.
+    stop_rel_grad: 1.0
+    stop_mode: best
+    stop_patience: 10
+    stop_min_iters: 25
+    stop_check_every: 5
+
+    # Zero preserves the established candidate. The accuracy runner overrides
+    # this to 70 to test whether MonoGS's native convergence is ending the
+    # diagonal refinement tail too early. Unlike stop_min_iters, it gates every
+    # tracking exit rather than only the preconditioner plateau.
+    hard_min_iters: 0
+
+    # Pixel sampling is disabled in this configuration, so a special dense
+    # terminal step would be inert.  Keep it off to make the arm unambiguous.
+    final_dense: False
+    profile_every: 0
+    dead_freeze: True

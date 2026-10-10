@@ -1,0 +1,14 @@
+# Full ScanNet scene0059_00 with the same asynchronous frontend/backend mode
+# as the accepted TUM setup.
+inherit_from: "configs/rgbd/scannet/base_config.yaml"
+
+Results:
+  save_dir: "results/baseline_async_full_scannet_scene0059_00"
+  use_gui: False
+  eval_rendering: True
+
+Dataset:
+  dataset_path: "datasets/scannet/scene0059_00/"
+
+Training:
+  single_thread: False

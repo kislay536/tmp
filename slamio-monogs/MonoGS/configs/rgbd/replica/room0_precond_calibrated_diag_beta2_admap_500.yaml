@@ -1,0 +1,37 @@
+# Replica room0, 500 frames, MIXED threading (the original Replica default:
+# Training.single_thread True blocks the frontend after a keyframe request,
+# Dataset.single_thread False keeps the async per-keyframe ceiling of 10), with
+# ADAPTIVE MAPPING ONLY.
+#
+# THE MIXED ARM HAD NO ADMAP CONFIG, so THREADING=mixed OPTS=admap could not
+# resolve. This is the mixed sibling of ..._async_admap_500.yaml and its matched
+# control is the parent, ..._beta2_500.yaml.
+#
+# THE BLOCK IS IDENTICAL TO THE ASYNC ARM'S, and that is correct rather than
+# lazy: min_iters/max_iters 3/10 are scaled to iter_per_kf = 10, which is what
+# Dataset.single_thread False gives here. Only FULL serial (both keys True,
+# iter_per_kf = mapping_itr_num = 150) would need them rescaled. The suite
+# preflight asserts room0 and office0 resolve to equal blocks.
+inherit_from: "configs/rgbd/replica/room0_precond_calibrated_diag_beta2_500.yaml"
+
+Results:
+  save_dir: "results/replica_room0_precond_calibrated_diag_beta2_admap_500"
+
+Training:
+  adaptive_mapping:
+    enabled: True
+    calibration_keyframes: 24
+    calibration_skip: 8
+    min_iters: 3
+    max_iters: 10
+    w_unseen: 0.0
+    w_new_pts: 0.0
+    w_depth: 0.6
+    w_color: 0.4
+    depth_error_ref: 0.09
+    color_error_ref: 0.18
+    cap_render_workload: True
+    min_keyframe_frac: 0.5
+    max_keyframe_frac: 1.0
+    min_random_viewpoints: 1
+    max_random_viewpoints: 2

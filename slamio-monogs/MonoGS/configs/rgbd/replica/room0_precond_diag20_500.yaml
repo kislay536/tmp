@@ -1,0 +1,61 @@
+# Replica room0, first 500 frames, with the shared handoff-free pose
+# preconditioner.  The optimizer owns all 100 tracking updates:
+#
+#   iterations 0..19   full 6x6 second-moment preconditioner
+#   iteration 20       reset the first moment, retain the carried M
+#   iterations 20+     diagonal inverse-square-root of the same M
+#
+# The runner observes the TUM D15 convergence criterion in shadow on this
+# first cross-dataset run.  It therefore cannot change the trajectory or the
+# iteration count; only this pose-update rule differs from the optimizer arm.
+inherit_from: "configs/rgbd/replica/room0.yaml"
+
+Results:
+  save_dir: "results/replica_room0_precond_diag20_500"
+
+Dataset:
+  frame_limit: 500
+
+Training:
+  iteration_graph:
+    enabled: False
+
+  early_stop:
+    enabled: False
+
+  windowed_convergence:
+    enabled: False
+    shadow: True
+    kind: incumbent_energy
+    window: 16
+    check_every: 8
+    patience: 4
+    pose_change: 0.10
+    loss_change: 0.001
+    progress_min: 0.001
+    proposal_after_phase: 1
+    energy_window: 16
+    energy_patience: 2
+    decay_ratio: 0.15
+
+  preconditioner:
+    enabled: True
+    auto_lr: True
+    tau: 0.05
+    beta2: 0.95
+    carry: True
+    refactor_every: 10
+    max_step_mult: 1.0
+    restart_at: 20
+    restart_m: "off"
+    diag_after: 20
+    handoff: 0
+    stop_rel_grad: 0.0
+    stop_mode: best
+    stop_patience: 10
+    stop_min_iters: 25
+    stop_check_every: 5
+    hard_min_iters: 100
+    final_dense: False
+    profile_every: 0
+    dead_freeze: True

@@ -1,0 +1,18 @@
+# Replica office0, 500 frames, the calibrated-diagonal preconditioner arm run
+# GENUINELY ASYNC. The office0 counterpart of
+# room0_precond_calibrated_diag_beta2_async_500.yaml - see that file for why
+# the two single_thread keys need setting together and why this is a separate
+# file rather than an edit to the parent.
+#
+# INHERITS THE office0 PARENT, NOT THE room0 ASYNC FILE. Chaining from room0's
+# async config would pull room0's dataset_path and save_dir along with the
+# threading key, and the save_dir collision would put two scenes in one results
+# directory. Taking the scene from office0's own parent and restating the one
+# threading key keeps each file responsible for exactly what its name says.
+inherit_from: "configs/rgbd/replica/office0_precond_calibrated_diag_beta2_500.yaml"
+
+Results:
+  save_dir: "results/replica_office0_precond_calibrated_diag_beta2_async_500"
+
+Training:
+  single_thread: False

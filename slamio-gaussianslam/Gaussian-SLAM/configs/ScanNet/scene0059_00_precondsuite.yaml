@@ -1,0 +1,60 @@
+# Suite cell for run_gslam_precond_suite.sh (scene "scannet0059"): the stock
+# ScanNet scene0059_00 config plus BINNING CAPACITY, which the plain scene
+# configs do not carry, mirroring
+# configs/TUM_RGBD/rgbd_dataset_freiburg1_desk_precondsuite.yaml. The suite
+# forces the iteration graph on or off by env var; tracker.py refuses the graph
+# without a fixed binning capacity, so the block has to be here.
+#
+# input_path is relative to Gaussian-SLAM/ (the suite runs from there) and points
+# at the layout download_scannet.sh writes - datasets/ScanNet/<scene>/
+# {color,depth,pose} - so no symlink into data/scannet/scans/ is needed.
+#
+# min_capacity IS RAISED TO 400000, NOT TUM'S 200000. TUM's floor was fitted on
+# fr1_desk (observed max ~179068), which is cropped by 50 pixels; ScanNet's crop
+# is 12, so the frames are larger and put more instances through the binning
+# sort. A floor only costs memory, while an undersized capacity means the FIRST
+# overflow already renders a frame wrong. Nothing here is fitted to ScanNet -
+# READ THE OVERFLOW COUNT in the run summary ("Binning capacity: ... N overflow
+# frames"); it must be 0, and a non-zero count means raise this again.
+inherit_from: configs/ScanNet/scene0059_00.yaml
+data:
+  input_path: ../datasets/ScanNet/scene0059_00
+  output_path: output/ScanNet/scene0059_00_precondsuite/
+tracking:
+  binning_capacity:
+    enabled: True
+    warmup_iters: 3
+    margin: 1.5
+    min_capacity: 400000
+
+# ADAPTIVE MAPPING BLOCK. ScanNet's stock config has none, so with ADMAP=1 the
+# mapper ran on AdaptiveMapper's bare defaults - budget 10..60 of a stock 100
+# mapping iterations, weights 0.4/0.3, n_new_pts_ref 300 - and averaged 44
+# iterations/frame. TUM's and Replica's GSLAM cells run a tuned 60..100. The
+# first ScanNet run with the defaults lost tracking at frame ~1000 (ATE 2327 cm
+# aligned against 9.59 cm stock). Restated here from TUM's block (tum_rgbd.yaml):
+# 60..100, weights 0.5/0.5, and w_depth/w_color 0 because GSLAM never supplies
+# depth or colour error (the depth/colour references are inert).
+#
+# n_new_pts_ref IS THE ONE VALUE THAT DOES NOT TRANSFER, so it is fitted IN-RUN:
+# calibrate_new_pts_frames runs the first 50 mapped frames (after discarding 5
+# as warm-up) at the full budget, fits the p90 of the raw new-point count, and
+# freezes it. 5000 is only TUM's value, the fallback if the sequence is too
+# short to finish the window. The fit is printed at calibration and again in
+# the end-of-run summary ("NEW POINTS over N frames ... fit/current"). Do NOT
+# turn on calibration_keyframes here: that one fits depth/colour and would hold
+# the budget at max forever.
+#
+# enabled stays False: ADMAP=1 (OPTS=admap) flips it, as in every other config.
+mapping:
+  adaptive_mapping:
+    enabled: False
+    min_iters: 60
+    max_iters: 100
+    w_unseen: 0.5
+    w_new_pts: 0.5
+    w_depth: 0.0
+    w_color: 0.0
+    n_new_pts_ref: 5000
+    calibrate_new_pts_frames: 50
+    calibrate_new_pts_skip: 5

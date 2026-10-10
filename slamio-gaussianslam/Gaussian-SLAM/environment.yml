@@ -1,0 +1,33 @@
+name: gslam
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - pip
+  - pip:
+    - --extra-index-url https://download.pytorch.org/whl/cu121
+    - torch==2.3.1+cu121
+    - torchvision==0.18.1+cu121
+    - torchaudio==2.3.1+cu121
+    - open3d
+    - wandb
+    - trimesh
+    - pytorch_msssim
+    - torchmetrics
+    - tqdm
+    - imageio
+    - opencv-python-headless==4.8.1.78
+    - plyfile
+    # Direct imports of the GSLAM code that were missing here and broke a fresh
+    # cluster env one job at a time (scipy: tracker.py, datasets.py; matplotlib:
+    # logger.py; yaml: io_utils.py - pyyaml only arrived transitively via wandb).
+    - scipy
+    - matplotlib
+    - pyyaml
+    - "numpy<2"
+    - setuptools
+    - faiss-gpu-cu12
+    # NOT pip packages, so not listed: diff_gaussian_rasterization and simple_knn
+    # are compiled CUDA extensions built from the repo's submodules, and
+    # evaluate_3d_reconstruction / utils / src are in-repo modules.

@@ -1,0 +1,45 @@
+# ScanNet inherits the same real-RGB-D optimization setup as TUM.  The only
+# dataset-specific changes are marked below: preserve frames without GT and
+# use the ScanNet keyframe thresholds measured for its deeper, rotation-heavy
+# motion.
+#
+# RGB is 1296x968 while depth is 640x480. utils/dataset.py resizes both onto
+# the depth grid; these are the upstream ScanNet colour intrinsics scaled to
+# 640x480.
+inherit_from: "configs/rgbd/tum/base_config.yaml"
+
+Dataset:
+  type: 'scannet'
+  sensor_type: 'depth'
+  pcd_downsample: 128
+  pcd_downsample_init: 32
+  adaptive_pointsize: True
+  point_size: 0.01
+  single_thread: False
+  # Keep RGB-D frames whose pose file is absent, malformed, or non-finite.
+  # Their GT is represented by NaNs and excluded only from ATE.  In
+  # scene0059_00 this prevents the 1460--1479 lost-pose block from becoming
+  # one artificial 20-frame jump in the tracking stream.
+  keep_invalid_pose_frames: True
+  Calibration:
+    fx: 577.590664
+    fy: 578.729803
+    cx: 319.158046
+    cy: 242.939024
+    k1: 0.0
+    k2: 0.0
+    p1: 0.0
+    p2: 0.0
+    k3: 0.0
+    distorted: False
+    width: 640
+    height: 480
+    depth_scale: 1000.0
+
+Training:
+  single_thread: False
+  # TUM's 0.08/0.05 translation thresholds produced too few keyframes on
+  # ScanNet.  Halving them restored the intended cadence without changing the
+  # optimizer, stopping, graph, reuse, or mapping policy.
+  kf_translation: 0.04
+  kf_min_translation: 0.025

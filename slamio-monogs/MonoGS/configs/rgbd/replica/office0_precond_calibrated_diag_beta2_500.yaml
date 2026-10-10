@@ -1,0 +1,35 @@
+# MonoGS Replica office0, 500 frames, on the current production preconditioner
+# arm.
+#
+# Inherits room0_precond_calibrated_diag_beta2_500.yaml WHOLE - calibrated
+# adaptive diagonal (P1, 24 frames), auto_lr, native convergence only,
+# hard_min_iters 0 so native tau can actually end a frame - and changes ONLY
+# the dataset and the output directory.
+#
+# NO Calibration BLOCK IS NEEDED HERE, unlike the TUM wrappers. Replica scenes
+# share one intrinsic set from configs/rgbd/replica/base_config.yaml, and
+# room0.yaml and office0.yaml differ only in dataset_path. Restating
+# intrinsics would be inventing a difference that does not exist.
+#
+# BINNING CAPACITY COMES FROM THE PARENT and is deliberately not restated here.
+# room0's config enables it to match the TUM arm; duplicating the block would
+# let the two Replica cells drift apart on a setting whose whole point is that
+# they share it.
+#
+# beta2 comes from PRE_BETA2 in the environment (0.98, settled 2026-09-05); the
+# parent also pins 0.98, so the two agree by construction rather than by luck.
+#
+# WHAT TO EXPECT, RECORDED BEFORE THE RUN. Replica is synthetic and the ladder
+# is explicit that Adam already converges there, so the method MATCHES rather
+# than wins and this cell tests whether the shared arm HARMS anything. room0 on
+# this arm scored 0.2560 cm at 78.2 it/frame on 2026-09-05 - note that its
+# recorded 0.1479 from an earlier session did NOT reproduce while its iteration
+# count did, and that discrepancy is still unexplained. Read office0 against
+# room0 FROM THE SAME SESSION, never against a ladder figure.
+inherit_from: "configs/rgbd/replica/room0_precond_calibrated_diag_beta2_500.yaml"
+
+Results:
+  save_dir: "results/replica_office0_precond_calibrated_diag_beta2_500"
+
+Dataset:
+  dataset_path: "datasets/replica/office0/"

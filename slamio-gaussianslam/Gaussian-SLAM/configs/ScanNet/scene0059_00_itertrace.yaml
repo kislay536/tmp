@@ -1,0 +1,31 @@
+# PER-ITERATION TRACE for the two convergence figures (plot_iter_trace.py),
+# the Gaussian-SLAM counterpart of SplaTAM/configs/tum/splatam_itertrace.py.
+#
+#   cd Gaussian-SLAM
+#   python run_slam.py configs/ScanNet/scene0059_00_itertrace.yaml
+#   python ../profiling/plot_iter_trace.py \
+#       output/ScanNet/scene0059_00_itertrace/iter_trace.jsonl \
+#       --label "Gaussian-SLAM, ScanNet scene0059_00"
+#
+# STOCK Gaussian-SLAM: torch Adam at the shipped ScanNet lrs, 200 tracking
+# iterations, no early stopping, no preconditioner, no iteration graph - the
+# stock scene config enables none of them, so nothing is switched off here.
+# Keep ITERGRAPH / PRECOND / GRAD_REUSE / TRACK_ITERS unset in the environment.
+#
+# The stock rule that DOUBLES the budget on a high-initial-loss frame stays
+# on; those frames are traced with cap 400 and the plot drops them by default
+# (--all-caps keeps them) rather than changing the run.
+#
+# NOT A TIMED RUN: the trace syncs once per iteration on traced frames.
+#
+# every: 5 traces ~361 of the 1807 frames spread over the whole sequence; all
+# frames are still tracked. ITER_TRACE_EVERY overrides it, ITER_TRACE the path.
+# Paths are relative to Gaussian-SLAM/, where run_slam.py runs.
+inherit_from: configs/ScanNet/scene0059_00.yaml
+frame_limit: -1
+data:
+  output_path: output/ScanNet/scene0059_00_itertrace/
+tracking:
+  iter_trace:
+    out_path: output/ScanNet/scene0059_00_itertrace/iter_trace.jsonl
+    every: 5

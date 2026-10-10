@@ -1,0 +1,60 @@
+# Replica office0, 500 frames, async, with ADAPTIVE MAPPING ONLY.
+#
+# Sparse tile sampling is deliberately OFF so this arm attributes to one lever.
+# Its siblings are ..._async_sparse_500.yaml and ..._async_admap_sparse_500.yaml,
+# and the matched control is the parent, ..._async_500.yaml.
+#
+# THE BLOCK IS RESTATED IN FULL, and that is not tidiness. adaptive_mapping
+# appears NOWHERE in the Replica config chain - not in replica/base_config.yaml,
+# not in office0.yaml - and AdaptiveMapper takes .get(..., {}) and constructs
+# disabled. "enabled: True" alone would set a flag on a block with no budget, no
+# weights and no error references. The TUM wrappers CAN write one flag because
+# tum/base_config.yaml carries the block with enabled: False.
+#
+# TWO CONSTANTS ARE SCENE-CALIBRATED AND ARE TUM's. depth_error_ref 0.09 and
+# color_error_ref 0.18 were fitted to a real 137-keyframe fr1_desk run. They are
+# novelty DENOMINATORS, so on a scene whose errors are systematically smaller
+# the signal saturates and the budget pins to max_iters every frame - the exact
+# failure the old 0.01/0.05 produced, logged as "avg 10.0/10 iters (1.00x
+# speedup)". READ "Adaptive mapping: N frames, avg X/10 iters" BEFORE THE ATE:
+# X at 10 means too tight for Replica and the mechanism is inert, X at 3 means
+# too loose, anything between is it working. If it saturates, re-fit from this
+# scene's own logged depth=/color= values rather than reading the ATE.
+#
+# This file and its office0 sibling must stay identical in this block; the
+# suite preflight asserts room0 and office0 resolve to equal adaptive_mapping.
+inherit_from: "configs/rgbd/replica/office0_precond_calibrated_diag_beta2_async_500.yaml"
+
+Results:
+  save_dir: "results/replica_office0_precond_calibrated_diag_beta2_async_admap_500"
+
+Training:
+  adaptive_mapping:
+    enabled: True
+    # SELF-CALIBRATING REFERENCES. The mapper runs at max_iters for the first
+    # 8 + 24 keyframes, discards the 8 as map warm-up, fits both references to
+    # this scene's own error p90 and freezes them. The shipped 0.09/0.18 below
+    # are only the pre-calibration values and the fallback for a sequence that
+    # never reaches the sample count - fr2_xyz has 16 keyframes in 500 frames
+    # and will run at max_iters throughout, which is the base arm.
+    #
+    # THE WINDOW COSTS NOTHING. max_iters is what this arm does with adaptive
+    # mapping off, so the calibration window IS baseline behaviour; the only
+    # thing forgone is a saving that measured zero.
+    calibration_keyframes: 24
+    calibration_skip: 8
+    # Scaled to the ASYNC per-keyframe ceiling (iter_per_kf = 10 when
+    # single_thread is False), NOT to mapping_itr_num = 150.
+    min_iters: 3
+    max_iters: 10
+    w_unseen: 0.0
+    w_new_pts: 0.0
+    w_depth: 0.6
+    w_color: 0.4
+    depth_error_ref: 0.09
+    color_error_ref: 0.18
+    cap_render_workload: True
+    min_keyframe_frac: 0.5
+    max_keyframe_frac: 1.0
+    min_random_viewpoints: 1
+    max_random_viewpoints: 2

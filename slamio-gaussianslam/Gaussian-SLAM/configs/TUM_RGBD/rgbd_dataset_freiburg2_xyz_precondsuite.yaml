@@ -1,0 +1,23 @@
+# Suite cell for run_gslam_precond_suite.sh: the scene config plus BINNING
+# CAPACITY, which the plain scene configs do not carry - only the fr1_desk
+# itergraph variants define it, and the suite forces iteration_graph OFF.
+#
+# BINNING IS NOT THE ITERATION GRAPH. tracker.py refuses iteration_graph
+# without it (binning is the prerequisite: without a fixed capacity the
+# rasterizer reads num_rendered back to the host and the iteration is
+# unrecordable), but the converse is fine - binning alone just removes that
+# one host readback per render.
+#
+# WATCH THE OVERFLOW COUNT, which the summary prints. An overflow means
+# duplicateWithKeys DROPPED instances and that frame is rendered WRONG. The
+# self-raising margin is reactive and cannot prevent the first corruption, so
+# a non-zero count means raise min_capacity rather than trusting the recovery.
+inherit_from: configs/TUM_RGBD/rgbd_dataset_freiburg2_xyz.yaml
+data:
+  output_path: output/TUM_RGBD/rgbd_dataset_freiburg2_xyz_precondsuite/
+tracking:
+  binning_capacity:
+    enabled: True
+    warmup_iters: 3
+    margin: 1.5
+    min_capacity: 200000

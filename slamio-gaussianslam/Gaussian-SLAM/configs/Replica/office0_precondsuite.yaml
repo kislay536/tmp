@@ -1,0 +1,74 @@
+# Suite cell for run_gslam_precond_suite.sh: the scene config plus BINNING
+# CAPACITY, which the plain scene configs do not carry - only the fr1_desk
+# itergraph variants define it, and the suite forces iteration_graph OFF.
+#
+# BINNING IS NOT THE ITERATION GRAPH. tracker.py refuses iteration_graph
+# without it (binning is the prerequisite: without a fixed capacity the
+# rasterizer reads num_rendered back to the host and the iteration is
+# unrecordable), but the converse is fine - binning alone just removes that
+# one host readback per render.
+#
+# WATCH THE OVERFLOW COUNT, which the summary prints. An overflow means
+# duplicateWithKeys DROPPED instances and that frame is rendered WRONG. The
+# self-raising margin is reactive and cannot prevent the first corruption, so
+# a non-zero count means raise min_capacity rather than trusting the recovery.
+#
+# min_capacity IS THE TUM VALUE AND IS UNVERIFIED HERE. It was measured on
+# fr1_desk (observed max ~179068 over 100 frames). Replica renders at a
+# different resolution, so the floor may be wrong in either direction - but it
+# is only a FLOOR: capacity is observed_max * margin, which is measured per
+# run, so the floor binds only when the measurement is anomalously small. The
+# overflow count is the check.
+inherit_from: configs/Replica/office0.yaml
+data:
+  output_path: output/Replica/office0_precondsuite/
+tracking:
+  binning_capacity:
+    enabled: True
+    warmup_iters: 3
+    margin: 1.5
+    min_capacity: 200000
+mapping:
+  # ADAPTIVE MAPPING BLOCK, ABSENT FROM THE ENTIRE REPLICA CHAIN.
+  #
+  # Only configs/TUM_RGBD/tum_rgbd.yaml defines one, so on Replica
+  # AdaptiveMapper(config.get("adaptive_mapping", {})) constructs DISABLED with
+  # no budget and no references - ADMAP=1 alone would flip a flag on an empty
+  # block. Restated here in full, the same asymmetry the MonoGS suite hit.
+  #
+  # GSLAM DRIVES NOVELTY FROM DIFFERENT SIGNALS THAN MonoGS. mapper.py passes
+  # unseen_ratio and n_new_pts_ratio, never depth_error or color_error, so
+  # w_depth and w_color stay 0 and the depth/color references are inert here.
+  # It also means the in-run self-calibration must stay OFF: it fits the
+  # depth/color p90, and with those never supplied it would never reach its
+  # sample count and would hold the budget at max_iters for the whole run.
+  #
+  # min/max ARE THE REPLICA MAPPING BUDGET, not TUM's. Replica maps 100
+  # iterations per frame against TUM's 100 but only every 5th frame
+  # (map_every: 5), and its new-submap pass is 1000 iterations against TUM's
+  # 100 - that pass is excluded from adaptation anyway (is_new_submap skips it).
+  # 60/100 keeps TUM's ratio against the same 100-iteration budget.
+  #
+  # n_new_pts_ref 40000, NOT TUM's 5000, AND THIS IS THE ONE VALUE FITTED FROM
+  # EVIDENCE RATHER THAN CARRIED. A room0 run logged "Number of added points:
+  # 44011" on a single frame. n_new_pts_ratio = min(new_pts / ref, 1.0), so at
+  # ref=5000 that saturates at 1.0 on essentially every frame, novelty pins
+  # high, and the budget never leaves max_iters - the mechanism would be inert
+  # while logging as enabled. This is the mirror of the MonoGS failure, where a
+  # too-LARGE reference collapsed novelty to the floor instead.
+  #
+  #   IT IS ONE SAMPLE, from one late frame. Read the per-frame
+  #   "[AdaptiveMap] frame N: b/100 iters (unseen=... new_pts=...)" lines: a
+  #   new_pts column pinned at 1.000 means still too small, one pinned near 0
+  #   means too large. AM_NEWPTS_REF overrides it without editing.
+  adaptive_mapping:
+    enabled: False
+    min_iters: 60
+    max_iters: 100
+    w_unseen: 0.5
+    w_new_pts: 0.5
+    w_depth: 0.0
+    w_color: 0.0
+    depth_error_ref: 0.01
+    color_error_ref: 0.05
+    n_new_pts_ref: 40000

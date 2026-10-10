@@ -1,0 +1,39 @@
+# fr2_xyz, the suite preconditioner arm with ONE lever added.
+#
+# ADAPTIVE MAPPING ONLY. Sparse tile sampling is deliberately OFF so this arm
+# attributes to one lever. It budgets mapping iterations per keyframe by scene
+# novelty (3..10 instead of a flat 10), so it attacks MAPPING time and should
+# leave every tracking column - it/frame, ms/iteration, stop reasons -
+# unchanged. If those move, something leaked across the boundary and the run
+# is not a clean single-lever comparison.
+#
+# READ "Adaptive mapping: N frames, avg X/10 iters" FIRST. depth_error_ref and
+# color_error_ref are novelty DENOMINATORS calibrated from a real 137-keyframe
+# fr1_desk run. X pinned at 10 means they are too tight for this scene and the
+# mechanism is inert - the exact failure the old 0.01/0.05 produced, logged as
+# "avg 10.0/10 iters (1.00x speedup)". X pinned at 3 means too loose.
+#
+# Both blocks already exist in configs/rgbd/tum/base_config.yaml with
+# enabled: False, so this file flips ONE flag and inherits every tuned
+# constant. The Replica counterpart cannot: neither block appears anywhere
+# in that chain, so it restates the enabled one in full.
+inherit_from: "configs/rgbd/tum/fr2_xyz_precond_calibrated_diag_native_500.yaml"
+
+Results:
+  save_dir: "results/tum_fr2_xyz_precond_calibrated_diag_native_admap_500"
+
+Training:
+  adaptive_mapping:
+    enabled: True
+    # SELF-CALIBRATING REFERENCES. The mapper runs at max_iters for the first
+    # 8 + 24 keyframes, discards the 8 as map warm-up, fits both references to
+    # this scene's own error p90 and freezes them. The shipped 0.09/0.18 below
+    # are only the pre-calibration values and the fallback for a sequence that
+    # never reaches the sample count - fr2_xyz has 16 keyframes in 500 frames
+    # and will run at max_iters throughout, which is the base arm.
+    #
+    # THE WINDOW COSTS NOTHING. max_iters is what this arm does with adaptive
+    # mapping off, so the calibration window IS baseline behaviour; the only
+    # thing forgone is a saving that measured zero.
+    calibration_keyframes: 24
+    calibration_skip: 8

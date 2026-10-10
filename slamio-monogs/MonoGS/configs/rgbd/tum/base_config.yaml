@@ -1,0 +1,474 @@
+## SLAM parameters
+Results:
+  save_results: True
+  save_dir: "results"
+  save_trj: True
+  save_trj_kf_intv: 5
+  use_gui: False
+  eval_rendering: True
+  use_wandb: False
+
+Dataset:
+  type: 'tum'
+  sensor_type: 'depth'
+  pcd_downsample: 128
+  pcd_downsample_init: 32
+  adaptive_pointsize: True
+  point_size: 0.01
+
+Training:
+  #Initialization
+  init_itr_num: 1050
+  init_gaussian_update: 100
+  init_gaussian_reset: 500
+  init_gaussian_th: 0.005
+  init_gaussian_extent: 30
+  # Tracking and Mapping
+  tracking_itr_num: 100
+  mapping_itr_num: 150
+  adaptive_mapping:
+    # Disabled again (2026-07-20) to isolate use_inline_backend's own A/B,
+    # same isolation method used for every lever this session. Re-enable
+    # once the inline-backend + idle_mapping result is in.
+    enabled: False
+    # Authored against the async per-keyframe ceiling (iter_per_kf=10 when
+    # single_thread is False, the default). MonoGS now detects the effective
+    # ceiling at startup and preserves this 30%-to-100% range automatically:
+    # inline/single-process mode therefore selects 45..150 when
+    # mapping_itr_num=150. Set auto_scale_bounds: False only for a deliberate
+    # absolute-budget experiment.
+    min_iters: 3
+    max_iters: 10
+    w_unseen: 0.0
+    w_new_pts: 0.0
+    w_depth: 0.6
+    w_color: 0.4
+    # Calibrated from a real 137-keyframe run's logged depth=/color= values
+    # (fr1_desk, opt/tracking_only_backward @ c8ef544): depth p90=0.095,
+    # color p90=0.189. The old 0.01/0.05 were 9x/3.6x too tight, so novelty
+    # saturated to 1.0 (budget == max_iters) on every single frame - see
+    # "Adaptive mapping: 137 frames, avg 10.0/10 iters (1.00x speedup)".
+    depth_error_ref: 0.09
+    color_error_ref: 0.18
+    # Render-workload cap: iteration-count budgeting above only ever
+    # changed how many mapping iterations run, never what each iteration
+    # costs - every iteration still renders the full window_size=8
+    # keyframes + 2 random viewpoints regardless of novelty. Mapping's
+    # total iteration share is small (see exp_adaptive_mapping notes,
+    # ~12%), which is why iteration-count-only budgeting topped out around
+    # ~5% wall time - this caps per-iteration render cost directly
+    # instead, on top of the existing iteration-count budget, not instead
+    # of it. Enabled for first real-run validation (accuracy + wall time,
+    # not yet confirmed safe).
+    cap_render_workload: True
+    min_keyframe_frac: 0.5
+    max_keyframe_frac: 1.0
+    min_random_viewpoints: 1
+    max_random_viewpoints: 2
+  # Tile-level sparse pixel sampling for tracking: skip whole 16x16 tiles
+  # (ranked by GT-image gradient magnitude) during the middle window of
+  # each frame's tracking iterations, reducing per-iteration render/
+  # backward cost directly rather than iteration count. Ported from
+  # exp/adaptive_mapping's validated implementation (MonoGS TUM fr1_desk,
+  # 573 frames: 923s vs 992s baseline = 1.07x, ATE 1.49cm vs 1.44cm
+  # baseline = +3.5%, clean) - that branch never combined this with
+  # early-stop for MonoGS (disabled ES instead); this branch does, with a
+  # fix in tracking() that forces one final unmasked render if early-stop
+  # fires mid-sparse-phase, so median_depth/is_keyframe never see masked
+  # data - untested combined with our early-stop/adaptive-mapping/render-
+  # cap stack. Tested enabled: engaged correctly (68.6% of iters masked)
+  # but ms/iter was statistically unchanged (13.45ms vs the 13.4-13.75ms
+  # non-sparse range) - tile masking still launches every CUDA
+  # thread-block, just returns early inside masked ones, so it doesn't
+  # reduce the per-tile-block dispatch cost that appears to dominate here.
+  # Net regression (633.8s vs 600.4s baseline) once corrective-render
+  # overhead is added back. Disabled - see coarse_to_fine below instead,
+  # which reduces the actual CUDA grid size rather than skipping work
+  # inside a fixed-size grid.
+  # FULL-MATRIX POSE PRECONDITIONER, ported from SplaTAM.
+  #
+  # THE TUM fr1_desk RESULT NEEDS ALL FOUR PIECES TOGETHER - the
+  # preconditioner with plateau stopping ALONE was 1/3 there, and 6/6 once the
+  # handoff was added. See results/preconditioner_ladder.txt.
+  #
+  #   stop_mode: best   patience on the BEST |g| this frame rather than a
+  #                     threshold on the current one. |g|/|g_0| is
+  #                     non-monotone and plateaus, so a threshold either fires
+  #                     on a noise dip or waits far too long.
+  #   handoff: N        preconditioner acquires the basin for N iterations,
+  #                     then Adam refines. stop_min_iters MUST exceed it or
+  #                     frames stop before Adam ever runs.
+  #   final_dense       one full-resolution GRADIENT step at the stopping
+  #                     moment. Only meaningful when pixel_sample is on.
+  #
+  # auto_lr derives the step scale from MonoGS's own tuned cam_*_delta lrs.
+  # The ladder records a hand-set lr carried blind to a new scene giving
+  # 17.49 cm against Adam's 0.24 - do not carry SplaTAM's PRE_LR here.
+  #
+  # Cannot run with iteration_graph: the handoff and final_dense both change
+  # what an iteration does, and a capture replays whichever it recorded.
+  preconditioner:
+    enabled: False
+    auto_lr: True
+    tau: 0.05
+    beta2: 0.95
+    carry: True
+    stop_rel_grad: 1.0        # in 'best' mode this is only the on-switch
+    stop_mode: best
+    stop_patience: 10
+    stop_min_iters: 25        # > handoff, so Adam always gets a share
+    stop_check_every: 5
+    handoff: 20
+    final_dense: True
+  pixel_sample:
+    enabled: False
+    sample_ratio: 0.6
+    full_start_ratio: 0.2
+    full_end_ratio: 0.8
+    gradient_frac: 0.5
+    border_pixels: 10
+  # Coarse-to-fine resolution schedule for tracking: unlike pixel_sample
+  # above, this launches a genuinely smaller CUDA grid (fewer tiles at
+  # reduced resolution) rather than masking tiles inside a full-size grid,
+  # directly targeting the per-block dispatch cost pixel_sample couldn't
+  # touch. Single-scale (scale=2, coarse_ratio=0.3) validated clean: wall
+  # 588.5s (best of the session), ms/iter 12.83 vs the prior 13.4-13.75ms
+  # range (a real, measured drop - unlike pixel_sample, which never moved
+  # ms/iter at all), ATE 1.81cm (normal band), 0 corrective renders.
+  #
+  # Tried a two-stage pyramid (15% scale=4 + 15% scale=2, same 0.3 total
+  # budget as the validated run, isolating "coarser opening stage" from
+  # "more total budget"): wall 592.0s, ms/iter 13.28 - worse than
+  # single-scale on both, despite the extra scale=4 stage in theory
+  # quartering resolution further. Likely the same class of diminishing
+  # returns pixel_sample hit: at scale=4 the grid gets small enough
+  # (~10x8 tiles) that GPU parallelism is underutilized and
+  # FORWARD::preprocess's per-Gaussian cost (unaffected by resolution)
+  # dominates, so there isn't much left for a coarser stage to save.
+  # Reverted to single-scale.
+  #
+  # Now testing coarse_ratio=0.5 (was 0.3) - pushes the coarse window's
+  # close from iter ~30 to iter ~50, landing exactly at min_iters=50
+  # instead of comfortably below it. Loses the "structurally can't
+  # overlap" safety margin the 0.3 test had (0 corrective renders was
+  # guaranteed by construction, not just observed) - min_iters has landed
+  # on exactly 50 (the floor) in every retune this session, so the
+  # boundary math works out to zero overlap by exactly one iteration, but
+  # watch the corrective-render count: nonzero here is expected/fine (the
+  # defensive fix in tracking() exists for this), not a bug.
+  coarse_to_fine:
+    # Disabled again (2026-07-20) to isolate use_inline_backend's own A/B.
+    enabled: False
+    scale: 2
+    coarse_ratio: 0.5
+  early_stop:
+    # Disabled again (2026-07-20) to isolate use_inline_backend's own A/B.
+    enabled: False
+    # Diagnostic run (early_stop.enabled=False) done and reverted: sync
+    # tax was 3.66ms/iter enabled vs 3.17ms/iter disabled - only ~0.49ms/
+    # iter (~13%) is our added .item() calls; the remaining ~87% is
+    # update_pose()'s own always-on `if converged:` check, which exists
+    # regardless of early_stop. An async deferred-read fix for our own
+    # signal would only reclaim ~20s total (~40K iters x 0.49ms) - real
+    # but modest, and the bigger remaining sync cost would need touching
+    # update_pose() itself (pre-existing, shared code - higher risk).
+    # 20: real tracking failure, ATE=4.4cm mid-run / 3.58cm final, vs ~1.5cm
+    # at 70 (2.4x+ worse) - not a smooth accuracy/speed tradeoff. Likely
+    # cause: Adam's momentum needs a few iterations to ramp up, so early
+    # gradient steps can look artificially small (a false plateau from the
+    # optimizer being slow to start, not from the pose actually being
+    # correct); the pose AND-condition can satisfy on those before real
+    # convergence once min_iters is low enough to let it be evaluated that
+    # early. The elbow diagnostic's loss-only estimate (9-21) doesn't
+    # capture this failure mode at all.
+    # 50: genuine midpoint, ATE=1.90cm (+27% vs baseline's ~1.5cm, moderate
+    # not catastrophic), wall=580s (-11.7% vs the 657s AM-only baseline).
+    # Real, usable tradeoff - fires on 456/591 frames (77.2%), avg iter 65.
+    # Keeping this as current default; 70 remains the zero-accuracy-cost
+    # fallback if 50's +27% ATE ever turns out to matter for a given eval.
+    min_iters: 50
+    # Map is thinnest/least-constrained at the start of the sequence, so
+    # min_iters=50 (tuned for a mature map) can cut frames off before the
+    # pose has genuinely converged there - observed as drift early in the
+    # run that later frames partly correct for once retuning has real data.
+    # warmup_min_iters holds a conservative, known-zero-accuracy-cost value
+    # until the first retune (at the default retune_start, ~frame 110 -
+    # see the retune_every comment below for why not sooner), then hands
+    # off to the data-driven min_iters above.
+    warmup_min_iters: 70
+    loss_eps: 1e-3
+    # 5->3: patience is never auto-retuned (stays fixed at whatever this
+    # says, unlike min_iters/loss_eps/pose_eps which get overwritten every
+    # retune cycle), so it's a direct, predictable aggressiveness lever now
+    # that the pose AND-condition is genuinely engaging (fewer consecutive
+    # plateau iterations required before firing, on both loss and pose).
+    patience: 3
+    pose_eps: 0.0
+    retune_every: 100
+    # Tried retune_start: 30 to shorten the warmup window (first retune at
+    # ~frame 41 instead of ~110) - fixed drift (ATE 1.57cm) but wall time
+    # regressed to 684.9s, worse than even the no-tracking-ES baseline
+    # (657s). Retune #1's log showed why: min_iters landed back at the
+    # floor (50->50, not elevated), but loss_eps tightened 4.4x
+    # (1.00e-03->2.27e-04) - probing frames 30-40 (still an immature, thin
+    # map) gave suggest_loss_eps different loss-curve shapes than a mature-
+    # map window would, and it picked a much stricter threshold to hit the
+    # same target_iter_frac. That stricter loss_eps then governed the
+    # *entire rest of the run* (550+ frames until the next retune at
+    # ~frame 140), not just the intended warmup window - avg fire iteration
+    # 68 despite min_iters=50, because plateau detection itself got slower.
+    # Left at the default (= retune_every, first retune ~frame 110) so the
+    # retuner still calibrates from a mature-map window like the 580s run
+    # that worked; warmup_min_iters below still protects the (now longer,
+    # ~100-frame) pre-retune window from the drift this was chasing.
+    retune_frames: 10
+    retune_probe_max_iters_frac: 1.0
+    retune_min_iters_floor: 50
+    dataset_frames: 592
+  # Gradient-informed adaptive Gaussian pruning: after each keyframe's
+  # mapping pass, removes the lowest-(xyz_gradient_accum/denom) Gaussians
+  # (weakest loss-reduction contribution), gated to only start late in the
+  # sequence and rate-capped per step, protecting the active keyframe
+  # window / high-opacity / well-observed Gaussians. Ported from RTGS
+  # (github.com/UMN-ZhaoLab/RTGS, MonoGS_fullend branch,
+  # gaussian_model.py:adaptive_pruning(), commit 30e5faf "Fix adaptive
+  # pruning..."). Values below match their tuned fr1_desk_full/
+  # fr1_desk_2x_target configs, NOT their README's 2.7x-FPS number (that
+  # was the older, pre-fix, single_thread-only algorithm at ratio=0.5) -
+  # needs its own isolated A/B before trusting any speedup figure here.
+  adaptive_pruning:
+    # Sanity pass (ratio=0.0) came back clean. First isolated A/B at the
+    # RTGS-tuned conservative values (ratio=0.10, start_progress=0.75)
+    # crashed on occ_aware_visibility desync (fixed, fbcb351). Second pass
+    # (start_progress=0.3, ratio=0.30, step cap=0.08) ran clean through
+    # frame 236: ATE 1.53-1.67cm throughout (normal band, no drop), pruning
+    # firing every eligible keyframe removing 300-750/step - but note
+    # target_final_count is computed from the LIVE current_count every
+    # call, not from reference_gaussian_count (that field is tracked/logged
+    # but never actually fed back into the removal math - a vestigial knob,
+    # same class of finding as RTGS's own dead fps_multiplier). Since
+    # max_prune_fraction_per_step (8%) is always smaller than the 30% gap,
+    # the step cap is what actually binds every call, not the ratio - this
+    # behaves as "shave ~8% off whatever the count is right now, every
+    # eligible keyframe" rather than "converge to a stable -30% size". In
+    # that window, organic growth from new keyframes still outpaced
+    # removal (net count rising ~32k->37k), so no accuracy cost yet but
+    # also not much net size reduction. Pushed further (2026-07-20, no ATE
+    # drop observed) since the step cap is the actual lever: step cap
+    # 0.08->0.15 (biggest single change - this is what was really
+    # throttling removal rate), start_progress 0.3->0.15 (more of the
+    # sequence pruned), ratio 0.30->0.5 (raise the ceiling so it doesn't
+    # become the binding constraint once removal actually keeps pace with
+    # growth), gradient_keep_percentile 0.45->0.3 (fewer protected
+    # candidates, since candidate-starvation was suspected before).
+    # min_opacity_protect loosened 0.85->0.7 (still protects genuinely
+    # confident Gaussians, just a lower bar) - min_mapping_observations
+    # left at 2, that one gates on having enough signal to judge at all,
+    # not just how aggressive to be.
+    #
+    # Third pass (2026-07-20): third run (ratio=0.5/start=0.15/step=0.15/
+    # gradient_keep_percentile=0.3) showed removal well below even the step
+    # budget in ~half the calls (e.g. frame 107: budget~852, actual=68).
+    # Traced it to two real, separate causes, not one:
+    #  1. active_progress = (progress_ratio-start_progress)/(1-start_progress)
+    #     is floored at max(active_progress, 0.25) in the code, and doesn't
+    #     clear that floor until progress_ratio > ~0.36 (frame ~213/592) -
+    #     so every call so far actually used step_budget = count * 0.15 *
+    #     0.25 = 3.75% of count, not the nominal 15%. Confirmed against the
+    #     log: frame 92, count=22346, 22346*0.0375=838 ~= observed
+    #     removed=837. This lifts on its own past frame ~213, not a config
+    #     bug - the deeper "true" step-cap fraction is untestable until then.
+    #  2. gradient_keep_percentile was moved the WRONG direction across the
+    #     last two passes (0.6->0.45->0.3). torch.quantile(signal, p) at a
+    #     LOWER p gives a LOWER threshold, and `signal >= thresh` protects
+    #     everything at-or-above it - so a lower p protects MORE Gaussians,
+    #     not fewer. 0.3 was accidentally the most protective value tried
+    #     yet, actively fighting candidate availability. Corrected: 0.3->0.8
+    #     (protect only the top 20% by gradient signal, not the top 70%).
+    #
+    # Fourth pass (2026-07-20): full run at ratio=0.5/start=0.15/step=0.15/
+    # gradient_keep_percentile=0.3 (still the old, backwards value - never
+    # got re-run with the 0.8 fix) finished clean: 672.72s, ATE 1.502cm
+    # (vs main's 1.4907cm baseline - essentially unchanged), PSNR/SSIM/LPIPS
+    # all slightly BETTER than main. Frame 541's single-step removal of
+    # 5041/50866 gaussians confirmed the ramp-floor diagnosis directly -
+    # once active_progress cleared the floor, cutting got dramatically
+    # bigger. ramp_floor was hardcoded at 0.25 in the ported function
+    # (a MINIMUM multiplier on the step budget, not a cap - so RAISING it
+    # means more cutting early, not less); exposed it as a real config knob
+    # and maxed it to 1.0 here - no ramp-up at all, full step budget from
+    # the very first pruning-eligible frame - since ATE has shown zero cost
+    # so far and the goal now is more total reduction, not caution.
+    #
+    # Fifth pass (2026-07-20) - DELIBERATE EXTREME/DIAGNOSTIC TEST, not a
+    # keeper config: Run A (ratio=0.5/step=0.15/ramp_floor stuck at 0.25)
+    # vs Run B (same but ramp_floor=1.0, percentile fixed 0.3->0.8) finished
+    # at 672.72s vs 671.30s, ms/iter 12.65 vs 12.85 - a real ~20% difference
+    # in final map size (39k vs 31k) between the two produced ZERO wall-time
+    # difference. Before concluding Gaussian count doesn't matter for
+    # tracking speed at all, testing whether that's actually true at a much
+    # deeper cut - "from 30k remove 500" is expected to be noise; this
+    # config tries to remove closer to half the map per step. Found two more
+    # things that would've silently capped this test the way ramp_floor and
+    # the percentile direction did before: min_opacity_protect and the
+    # hardcoded `n_obs >= 3.0` term almost certainly protect the bulk of a
+    # mature, slow-sequence map on their own, independent of
+    # gradient_keep_percentile - exposed n_obs_protect as a config knob too
+    # (was hardcoded) and neutralized both here. Expect real ATE cost at
+    # these settings (this is intentionally past anything RTGS validated,
+    # even past our own prior "aggressive" pass) - the only goal is
+    # characterizing whether a genuinely small map ever moves ms/iter, not
+    # producing a usable config.
+    #
+    # VERDICT (2026-07-20): the fifth (extreme) pass finished at 749.64s
+    # with ms/iter 12.54 - flat with (actually the best of) the mild
+    # (12.65) and aggressive (12.85) passes, despite the live Gaussian
+    # count sitting at 7k-20k here vs 30-50k in the other two, a 3-5x
+    # range. ATE held in the same 1.4-1.7cm band across all three configs.
+    # The Total time increase (749.64s vs ~672s) is NOT a tracking-speed
+    # regression - the per-frame breakdown showed load=92.9s vs 15.8s in
+    # the other runs (a ~77s gap, matching the total-time gap almost
+    # exactly), and `load` is per-frame dataset image loading
+    # (Camera.init_from_dataset), unrelated to Gaussian count; tracking
+    # time itself (594.7s) was in line with the other runs. Likely either
+    # VM environment noise or CUDA allocator churn from this config's
+    # constant massive tensor reallocations (single steps removing
+    # 5,000-13,000 Gaussians) - not something the other two configs did.
+    #
+    # Conclusion: Gaussian count is not the bottleneck for MonoGS tracking
+    # speed in this system, across the full range we tested. Disabled -
+    # kept in the codebase (harmless, occasionally improves ATE/PSNR
+    # slightly) but not worth enabling for speed. See
+    # [[exp_adaptive_pruning]] memory for the full writeup. Values below
+    # reset to the last real (non-extreme) validated pass, not the
+    # fifth/diagnostic ones, in case this is ever re-enabled.
+    enabled: False
+    target_reduction_ratio: 0.5
+    start_progress: 0.15
+    max_prune_fraction_per_step: 0.15
+    min_mapping_observations: 2
+    gradient_keep_percentile: 0.8
+    min_opacity_protect: 0.7
+    n_obs_protect: 3.0
+    ramp_floor: 1.0
+    keyframe_interval: 1
+    dataset_frames: 592
+  gaussian_update_every: 150
+  gaussian_update_offset: 50
+  gaussian_th: 0.7
+  gaussian_extent: 1.0
+  gaussian_reset: 2001
+  size_threshold: 20
+  kf_interval: 5
+  window_size: 8
+  pose_window: 3
+  edge_threshold: 1.1
+  rgb_boundary_threshold: 0.01
+  alpha: 0.9
+  kf_translation: 0.08
+  kf_min_translation: 0.05
+  kf_overlap: 0.9
+  kf_cutoff: 0.3
+  prune_mode: 'slam'
+  single_thread: False
+  # Runs backend inline (synchronous, same process/CUDA context as
+  # frontend) instead of a separate mp.Process - eliminates cross-process
+  # CUDA context-switch overhead but loses the continuous background-
+  # mapping loop and all tracking/mapping overlap. NOT the same as
+  # single_thread above, which keeps backend as a separate mp.Process
+  # regardless and only changes synchronization behavior + jumps
+  # iter_per_kf to the full mapping_itr_num - see slam.py/InlineBackendQueue
+  # and the rtgs_concurrency_and_benchmark_caveat memory. One-off test
+  # (2026-07-20): all other opts left at their current state
+  # (adaptive_mapping/coarse_to_fine/early_stop enabled, adaptive_pruning
+  # disabled, tracking_only hardcoded on) - iter_per_kf stays fixed at 10
+  # regardless, since single_thread (the only thing that changes it) is
+  # untouched here, matching SplaTAM's fixed-iters-plus-adaptive-budget-cap
+  # pattern rather than conflating "serial execution" with "15x more
+  # mapping work per keyframe". Requires Results.use_gui: False (raises
+  # NotImplementedError otherwise).
+  #
+  # First run: Total time 428.35s (vs 726.658s main baseline / ~580-673s
+  # for every combined-opt async run this session) - ms/iter dropped to
+  # 7.53 from the rock-steady 12.5-12.9 every pruning config got, real
+  # confirmation of the CUDA-context-switch hypothesis. But RMSE ATE
+  # 2.47cm, worse than every other config tried (main baseline 1.49cm,
+  # best pruning runs 1.42-1.56cm). Ported RTGS's idle_mapping() fix
+  # verbatim (FrontEnd.idle_mapping_interval + BackEnd.idle_mapping(),
+  # called from FrontEnd.run() to substitute for the missing continuous
+  # loop) - barely moved ATE (2.47->2.40cm) despite nearly doubling
+  # kf_logic time (80.2s->150.4s), and RTGS's OWN published numbers
+  # (comparison_results/2x_quality/summary.md in the RTGS repo) show
+  # their use_inline_backend+idle_mapping baseline ALSO has degraded ATE
+  # (3.17cm on a 100-frame fr1_desk subset, vs 1.61cm for their
+  # single_thread baseline on the FULL sequence) - idle_mapping alone
+  # doesn't fix this, for them either.
+  #
+  # Real fix: iter_per_kf now goes to the full mapping_itr_num under
+  # use_inline_backend too (see slam_backend.py), not just single_thread -
+  # this is the actual mechanism RTGS Soft (single_thread + fast_mode,
+  # independently reproduced: 3.75 FPS/1.55cm ATE vs baseline's 1.16 FPS/
+  # 1.61cm) relies on: no continuous loop, but each keyframe's own pass is
+  # 15x deeper to compensate, instead of relying on idle_mapping's
+  # per-frame trickle. idle_mapping_interval set effectively off here to
+  # isolate the deep-iter_per_kf effect alone, same isolation method used
+  # for every lever this session - re-combine only after this is judged
+  # on its own.
+  idle_mapping_interval: 1000000
+  idle_mapping_prune_interval: 10
+  # FLIPPED TO False (2026-08-25). It was left True after the one-off A/B
+  # above, and it is the reason MonoGS runs on this branch are slow: the
+  # backend runs SYNCHRONOUSLY in the frontend's CUDA context, so there is no
+  # tracking/mapping overlap at all, and under it iter_per_kf jumps to the full
+  # mapping_itr_num so each keyframe's mapping pass is far deeper. Both cost
+  # wall time by construction.
+  #
+  # It also made every timing here incomparable to the recorded main baseline
+  # (726.658s, FPS 0.815, ATE 1.4907 cm), which predates the flag and is
+  # therefore ASYNC - so any inline-vs-726s comparison measured the
+  # concurrency model rather than the thing under test. That is the same trap
+  # the rtgs_concurrency_and_benchmark_caveat note records for RTGS's own
+  # published multipliers.
+  #
+  # ANY MonoGS NUMBER RECORDED ON THIS BRANCH BEFORE THIS DATE WAS MEASURED
+  # WITH INLINE ON and is not comparable to runs after it - including the
+  # in-loop figures quoted in fr1_desk_posefix.yaml's own header. Set INLINE=1
+  # to reproduce them.
+  use_inline_backend: False
+  spherical_harmonics: False
+  lr:
+    cam_rot_delta: 0.003
+    cam_trans_delta: 0.001
+
+
+
+## 3DGS default parameters
+opt_params:
+  iterations: 30000
+  position_lr_init: 0.00016
+  position_lr_final: 0.0000016
+  position_lr_delay_mult: 0.01
+  position_lr_max_steps: 30000
+  feature_lr: 0.0025
+  opacity_lr: 0.05
+  scaling_lr: 0.001
+  rotation_lr: 0.001
+  percent_dense: 0.01
+  lambda_dssim: 0.2
+  densification_interval: 100
+  opacity_reset_interval: 3000
+  densify_from_iter: 500
+  densify_until_iter: 15000
+  densify_grad_threshold: 0.0002
+
+model_params:
+  sh_degree: 0
+  source_path: ""
+  model_path: ""
+  resolution: -1
+  white_background: False
+  data_device: "cuda"
+
+pipeline_params:
+  convert_SHs_python: False
+  compute_cov3D_python: False

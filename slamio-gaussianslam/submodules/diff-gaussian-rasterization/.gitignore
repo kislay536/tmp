@@ -1,0 +1,8 @@
+build/
+diff_gaussian_rasterization.egg-info/
+dist/
+
+# rebuild.sh's captured pip -v output. Kept on disk (not a temp file) so the
+# full compiler log is inspectable after the summary, but it is per-machine
+# build noise and must never be committed.
+build_last.log

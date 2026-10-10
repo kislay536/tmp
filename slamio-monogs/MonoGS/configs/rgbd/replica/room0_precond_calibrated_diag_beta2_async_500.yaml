@@ -1,0 +1,43 @@
+# Replica room0, 500 frames, the calibrated-diagonal preconditioner arm run
+# GENUINELY ASYNC - the mode the three TUM cells were already in.
+#
+# THERE ARE TWO single_thread KEYS AND THE PARENT HAS THEM CONTRADICTING EACH
+# OTHER:
+#
+#   Training.single_thread   read by the FRONTEND (slam_frontend.py:88). True
+#                            makes it BLOCK after requesting a keyframe.
+#   Dataset.single_thread    read by the BACKEND (slam_backend.py:94-96). True
+#                            gives each keyframe the full mapping_itr_num;
+#                            False gives the async ceiling of 10, on the
+#                            assumption that a continuous background mapping
+#                            loop compensates.
+#
+# replica/base_config.yaml sets the first True; room0.yaml overrides only the
+# second to False. So the parent arm runs the worst of both - the frontend
+# serialises while the backend keeps the shallow 10-iteration budget that only
+# makes sense when mapping actually overlaps tracking. The cost is measured,
+# not inferred: the room0 run reports single_thread=102.9 s of pure frontend
+# wait inside an 872 s total, 12% of the run.
+#
+# This file changes that ONE key and nothing else. Everything - calibrated
+# diagonal, auto_lr, beta2, binning capacity, native convergence, frame limit,
+# dataset - comes from the parent, so the two differ in threading alone.
+#
+# A SEPARATE FILE RATHER THAN AN EDIT TO THE PARENT, following
+# run_monogs_main_replica500.sh: the parent keeps meaning what it meant when
+# the recorded Replica numbers were taken, and this is a new arm with its own
+# identity and its own results directory. Editing in place would silently
+# redefine every figure already attributed to that config.
+#
+# NOT THE SERIAL ARM, AND room0_sp.yaml IS NOT THE OPPOSITE OF THIS FILE.
+# room0_sp sets BOTH keys True, and the backend key does not merely change
+# threading - it swaps iter_per_kf from 10 to mapping_itr_num, which is 150.
+# That is a 15x deeper mapper, so an async-vs-sp comparison confounds threading
+# with mapping depth and any accuracy difference is almost certainly the depth.
+inherit_from: "configs/rgbd/replica/room0_precond_calibrated_diag_beta2_500.yaml"
+
+Results:
+  save_dir: "results/replica_room0_precond_calibrated_diag_beta2_async_500"
+
+Training:
+  single_thread: False

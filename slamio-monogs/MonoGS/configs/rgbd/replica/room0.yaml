@@ -1,0 +1,8 @@
+inherit_from: "configs/rgbd/replica/base_config.yaml"
+Training:
+  early_stop:
+    enabled: False
+
+Dataset:
+  dataset_path: "datasets/replica/room0/"
+  single_thread: False

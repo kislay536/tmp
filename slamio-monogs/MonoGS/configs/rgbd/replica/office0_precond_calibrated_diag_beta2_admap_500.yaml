@@ -1,0 +1,29 @@
+# Replica office0, 500 frames, MIXED threading, with ADAPTIVE MAPPING ONLY.
+# See room0_precond_calibrated_diag_beta2_admap_500.yaml for why this exists and
+# why the 3/10 budget is correct here. Matched control: the parent,
+# office0_precond_calibrated_diag_beta2_500.yaml.
+#
+# This block and room0's must stay identical; the suite preflight asserts it.
+inherit_from: "configs/rgbd/replica/office0_precond_calibrated_diag_beta2_500.yaml"
+
+Results:
+  save_dir: "results/replica_office0_precond_calibrated_diag_beta2_admap_500"
+
+Training:
+  adaptive_mapping:
+    enabled: True
+    calibration_keyframes: 24
+    calibration_skip: 8
+    min_iters: 3
+    max_iters: 10
+    w_unseen: 0.0
+    w_new_pts: 0.0
+    w_depth: 0.6
+    w_color: 0.4
+    depth_error_ref: 0.09
+    color_error_ref: 0.18
+    cap_render_workload: True
+    min_keyframe_frac: 0.5
+    max_keyframe_frac: 1.0
+    min_random_viewpoints: 1
+    max_random_viewpoints: 2

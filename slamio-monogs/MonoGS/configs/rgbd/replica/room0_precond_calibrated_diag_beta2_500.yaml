@@ -1,0 +1,93 @@
+# THE CURRENT TUM PRODUCTION ARM, TRANSFERRED TO REPLICA ROOM0 (500 frames).
+#
+# Mirrors fr1_desk_precond_calibrated_diag_beta2_full.yaml key for key:
+#
+#   adaptive_diag P1, 24 calibration frames -> fixed median transition
+#   beta2 0.98            (budget-matched horizon; the TUM default is 0.95)
+#   auto_lr True, max_step_mult 1.0, handoff 0, carry, dead_freeze
+#   native convergence only - no shared criterion, no plateau, no loss stopper
+#   hard_min_iters 0, so native tau is free to end a frame
+#
+# On TUM that arm gives 1.6246 cm at 68.4 iterations/frame in 369.1 s, against
+# 1.6774 / 73.6 / 398.3 at beta2=0.95. It is the best speed/accuracy point
+# MonoGS TUM currently has.
+#
+# WHAT TO EXPECT HERE, STATED BEFORE THE RUN. Replica is the sequence where the
+# criterion work repeatedly failed because it has no iteration headroom: its
+# own shadow put the median useful proposal at iteration 96 of 100, and every
+# gated arm degraded monotonically in how early it stopped. Native convergence
+# is the only stopping rule in this arm, so if Replica genuinely needs ~100
+# updates it will simply take them and the result will land near the
+# full-budget control rather than below it.
+#
+#   beta2 is the interesting variable, not the stopping. Replica's budget is
+#   100 updates against a horizon of 1/(1-0.95) = 20 samples at the old value,
+#   a ratio of 0.20 - even further from SplaTAM's 0.66 than TUM's 0.27. If the
+#   estimator-quality reading is right, 0.98 (horizon 50) should help at least
+#   as much here as it did on TUM.
+#
+# REFERENCES on this sequence at 500 frames:
+#   stock main                    0.1378 cm  100.0 it/frame  895.1 s
+#   diag20 preconditioner, full   0.2010 cm  100.0 it/frame  922.6 s
+#   branch Adam, opts off         0.2622 cm   40.0 it/frame  730.4 s
+#
+# Read ATE against those. Wall time is comparable only within one machine.
+inherit_from: "configs/rgbd/replica/room0_precond_diag20_500.yaml"
+
+Results:
+  save_dir: "results/replica_room0_precond_calibrated_diag_beta2_500"
+
+Training:
+  # THREADING IS DELIBERATELY NOT CHANGED HERE. This file inherits
+  # Training.single_thread: True from replica/base_config.yaml while room0.yaml
+  # overrides only Dataset.single_thread to False, so the frontend blocks after
+  # each keyframe request while the backend keeps the shallow async budget -
+  # measured at 102.9 s of pure wait inside an 872 s room0 run.
+  #
+  # THAT IS LEFT ALONE ON PURPOSE, so this file keeps meaning what it meant
+  # when the recorded Replica numbers were taken. The fixed version is its own
+  # arm: room0_precond_calibrated_diag_beta2_async_500.yaml, which inherits
+  # this file and sets Training.single_thread: False.
+
+  # BINNING CAPACITY, MATCHING THE TUM ARM THIS FILE CLAIMS TO MIRROR.
+  #
+  # It was missing here and enabled on TUM, which made the two halves of the
+  # MonoGS suite differ in something nobody had chosen: the TUM chain picks it
+  # up from fr1_desk_posefix_async.yaml, and the Replica chain never set it, so
+  # BinningCapacity({}) constructed with enabled=False. The preflight in
+  # run_monogs_replica_beta2.sh could not catch it - it compares the seventeen
+  # preconditioner keys and this is not one of them.
+  #
+  # THE VALUES TRANSFER DESPITE THE DIFFERENT RESOLUTION. capacity is measured
+  # on the warm-up iterations and multiplied by margin; min_capacity is only an
+  # absolute floor, and an undersized capacity is caught rather than silently
+  # wrong - end_frame() reports the overflow and the margin self-raises x1.5,
+  # up to max_margin. So these are the same numbers as TUM by intent, not by
+  # assumption that the two scenes render the same number of instances.
+  #
+  # NOT AN INDEPENDENT OPTIMISATION. Its purpose is to stop the rasterizer
+  # reading num_rendered back to the host, which is what makes the tracking
+  # iteration recordable. iteration_graph is OFF in every suite cell, so the
+  # capture it enables is not in play here; what remains is whether removing
+  # that one sync is worth anything on its own, which is untested.
+  binning_capacity:
+    enabled: True
+    warmup_iters: 3
+    margin: 1.5
+    min_capacity: 150000
+
+  windowed_convergence:
+    enabled: False
+    shadow: False
+
+  preconditioner:
+    beta2: 0.98
+    restart_at: 0
+    diag_after: 0
+    adaptive_diag: True
+    adaptive_diag_patience: 1
+    adaptive_diag_calibration_frames: 24
+    handoff: 0
+    stop_rel_grad: 0.0
+    # 0 lets MonoGS's native convergence end a frame; the parent pins 100.
+    hard_min_iters: 0

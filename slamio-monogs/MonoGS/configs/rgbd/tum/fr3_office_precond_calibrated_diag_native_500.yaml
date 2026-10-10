@@ -1,0 +1,40 @@
+# MonoGS TUM fr3/long_office_household, 500 frames, on the current production
+# preconditioner arm.
+#
+# Inherits fr1_desk_precond_calibrated_diag_native_full.yaml WHOLE - calibrated
+# adaptive diagonal (P1, 24 frames -> fixed median transition), auto_lr, native
+# convergence only, no shared criterion - and changes ONLY the dataset, the
+# frame limit and the output directory.
+#
+# THE FULL Calibration BLOCK IS RESTATED, AND HERE IT IS LOAD-BEARING RATHER
+# THAN MERELY TIDY. load_config merges recursively, so overriding dataset_path
+# alone would keep fr1_desk's `distorted: True` and its five distortion
+# coefficients. fr3 IS AN UNDISTORTED SEQUENCE - k1..k3, p1, p2 are all zero
+# and distorted is False. Inheriting fr1's would undistort an already-undistorted
+# image with the wrong model, and the run would complete and report a
+# plausible-looking ATE built on the wrong camera. Values copied verbatim from
+# configs/rgbd/tum/fr3_office.yaml.
+#
+# beta2 comes from PRE_BETA2 in the environment (0.98, settled 2026-09-05).
+inherit_from: "configs/rgbd/tum/fr1_desk_precond_calibrated_diag_native_full.yaml"
+
+Results:
+  save_dir: "results/tum_fr3_office_precond_calibrated_diag_native_500"
+
+Dataset:
+  dataset_path: "datasets/tum/rgbd_dataset_freiburg3_long_office_household"
+  frame_limit: 500
+  Calibration:
+    fx: 535.4
+    fy: 539.2
+    cx: 320.1
+    cy: 247.6
+    k1: 0.0
+    k2: 0.0
+    p1: 0.0
+    p2: 0.0
+    k3: 0.0
+    distorted: False
+    width: 640
+    height: 480
+    depth_scale: 5000.0

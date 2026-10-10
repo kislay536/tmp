@@ -1,0 +1,75 @@
+# ScanNet scene0059_00, full sequence.  This is the ScanNet counterpart of
+# TUM's fr1_desk_precond_calibrated_diag_native_full.yaml.  The suite applies
+# the accepted runtime choices (fixed D20, k=0.5, graph, windowed stop OR
+# native, and calibrated gradient reuse) identically to both datasets.  The
+# best-config route additionally calibrates incumbent-energy decay once over
+# 24 full-tail frames and freezes 0.10 if no looser candidate is safe.
+#
+# ScanNet has a shorter inheritance chain than TUM, so the resolved TUM blocks
+# are written here explicitly.  Dataset intrinsics, missing-GT handling, and
+# the ScanNet keyframe thresholds come from scannet/base_config.yaml.
+inherit_from: "configs/rgbd/scannet/scene0059_00_async_full.yaml"
+
+Results:
+  save_dir: "results/scannet_scene0059_00_precond_calibrated_diag_native_full"
+
+Dataset:
+  frame_limit: -1
+
+Training:
+  tracking_itr_num: 100
+  use_inline_backend: False
+  single_thread: False
+  binning_capacity:
+    enabled: True
+    warmup_iters: 3
+    margin: 1.5
+    min_capacity: 150000
+  iteration_graph:
+    enabled: False
+    warmup_iters: 5
+    capture_error_mode: "thread_local"
+  es_signals:
+    enabled: True
+    batch: 8
+  capture_safe_pose: True
+  early_stop:
+    enabled: False
+    min_iters: 35
+    warmup_min_iters: 50
+    retune_min_iters_floor: 35
+    retune_reject_fallback: True
+    retune_max_change: 1.6
+    retune_smooth: 0.5
+  windowed_convergence:
+    enabled: False
+    shadow: False
+    window: 16
+    check_every: 8
+    patience: 2
+    z_threshold: 2.0
+    decay_ratio: 0.25
+  preconditioner:
+    enabled: True
+    auto_lr: True
+    tau: 0.05
+    beta2: 0.95
+    carry: True
+    refactor_every: 10
+    max_step_mult: 1.0
+    restart_at: 0
+    restart_m: "off"
+    diag_after: 0
+    adaptive_diag: True
+    adaptive_diag_patience: 1
+    adaptive_diag_calibration_frames: 24
+    handoff: 0
+    stop_rel_grad: 0.0
+    stop_mode: best
+    stop_patience: 10
+    stop_min_iters: 25
+    stop_check_every: 5
+    hard_min_iters: 0
+    final_dense: False
+    profile_every: 0
+    dead_freeze: True

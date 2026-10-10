@@ -1,0 +1,23 @@
+# PER-ITERATION TRACE of the MonoGS PRECONDITIONER, for the "why the diagonal
+# tail" figure (profiling/plot_iter_trace.py). Same config chain the suite
+# runs for fr1_desk (run_monogs_precond_suite.sh cfg_for), own save_dir, and
+# every 5th frame traced. The arms are chosen by env, exactly as the suite
+# does it:
+#
+#   full matrix only    PRE_DIAG_ADAPTIVE=0 PRE_DIAG_AFTER=0
+#                       (auto_lr pins EVERY step to the target norm)
+#   diagonal tail       PRE_DIAG_ADAPTIVE=0 PRE_DIAG_AFTER=10
+#                       (from iteration 10: Adam's per-axis rates on diag(M))
+#
+# The calibrated (adaptive) transition is refused by the trace - its split
+# render/step path is not hooked - hence PRE_DIAG_ADAPTIVE=0. ITERGRAPH=0 is
+# required for the same reason. NOT A TIMED RUN.
+inherit_from: "configs/rgbd/tum/fr1_desk_precond_calibrated_diag_native_full.yaml"
+
+Results:
+  save_dir: "results/tum_fr1_desk_precond_itertrace"
+
+Training:
+  iter_trace:
+    out_path: "results/tum_fr1_desk_precond_itertrace/iter_trace.jsonl"
+    every: 5

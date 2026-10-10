@@ -1,0 +1,38 @@
+# Fast-path TUM candidate.
+#
+# The first 24 tracked frames use the threshold-free P1 proposal validation to
+# learn this sequence's typical full->diagonal transition. Their median switch
+# is then installed as a fixed restart_at=diag_after boundary. Every later frame
+# returns to MonoGS's original combined tracking iteration, so it does not pay a
+# loss .item() readback for the adaptive decision.
+#
+# Stopping is MonoGS's native convergence, batched by the already-established
+# ESSignalBuffer. P8 is deliberately off: the ladder's accepted fast baseline
+# used native convergence and P8 reproduced almost the same work more slowly.
+inherit_from: "configs/rgbd/tum/fr1_desk_precond_diag20.yaml"
+
+Results:
+  save_dir: "results/tum_fr1_desk_precond_calibrated_diag_native_full"
+
+Dataset:
+  frame_limit: -1
+
+Training:
+  tracking_itr_num: 100
+
+  early_stop:
+    enabled: False
+
+  windowed_convergence:
+    enabled: False
+    shadow: False
+
+  preconditioner:
+    restart_at: 0
+    diag_after: 0
+    adaptive_diag: True
+    adaptive_diag_patience: 1
+    adaptive_diag_calibration_frames: 24
+    handoff: 0
+    stop_rel_grad: 0.0
+    hard_min_iters: 0

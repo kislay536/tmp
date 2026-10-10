@@ -1,0 +1,59 @@
+# Calibrated-diagonal TUM candidate, WITH ADAPTIVE MAPPING.
+#
+# One lever against its parent. The parent run is the matched control:
+#
+#   fr1_desk_precond_calibrated_diag_native_full.yaml
+#     ATE 1.7007 cm, total 389.8 s, 43,303 tracking iterations (73.3/frame),
+#     7.79 ms/iteration, sync block 0.57 ms/iteration (7.3%),
+#     learned D=6 (p10/med/p90 = 3/6/8, censored=0), native=554 cap=37.
+#
+# WHY THIS ARM EXISTS. That control sits 28% above the accepted 303.6 s rung at
+# 7.79 vs ~4.9 ms/iteration while running 12% FEWER iterations, so the residual
+# is per-iteration tracking cost - which the calibration was never going to
+# reach. Removing the adaptive loss readback cut the sync block from 0.84 to
+# 0.57 ms/iteration and that is only 0.27 ms of a ~2.9 ms gap. Adaptive mapping
+# does not touch that gap at all: it attacks the ~90 s of the run that is not
+# tracking. Treat it as a mapping-side lever measured against a fixed tracking
+# arm, not as a fix for the tracking result.
+#
+# THE CALIBRATION DELIBERATELY RE-RUNS. D is not pinned to the parent's 6.
+# Mapping changes the map each switch decision is made against, so re-learning
+# the transition is the honest version - and the printed median is a free check
+# on whether mapping perturbed it. A D far from 3/6/8 is itself a finding.
+#
+# TWO KNOBS MOVE, NOT ONE. Training.adaptive_mapping in base_config carries
+# cap_render_workload: True, which budgets per-iteration render cost on top of
+# the iteration-count budget. base_config flags it "not yet confirmed safe".
+# This arm keeps the tuned defaults as they stand; a render-cap-free variant
+# would be a separate config, not an edit to this one.
+#
+# DO NOT ATTRIBUTE ANY SAVING TO TRACKING. Read 'Adaptive mapping:' iterations
+# per keyframe and 'Total time' against the control above. The tracking columns
+# - iterations/frame, ms/iteration, stop reasons - should be unchanged. If they
+# move, something leaked across the tracking/mapping boundary and the run is
+# not a clean single-lever comparison.
+inherit_from: "configs/rgbd/tum/fr1_desk_precond_calibrated_diag_native_full.yaml"
+
+Results:
+  save_dir: "results/tum_fr1_desk_precond_calibrated_diag_native_admap_full"
+
+Training:
+  # The only change against the parent. min_iters/max_iters (3/10) are already
+  # scaled to the async per-keyframe ceiling (iter_per_kf=10 with
+  # single_thread False, which the preflight asserts), and depth/color error
+  # references are the 0.09/0.18 calibrated from a real 137-keyframe fr1_desk
+  # run. Nothing else is overridden.
+  adaptive_mapping:
+    enabled: True
+    # SELF-CALIBRATING REFERENCES. The mapper runs at max_iters for the first
+    # 8 + 24 keyframes, discards the 8 as map warm-up, fits both references to
+    # this scene's own error p90 and freezes them. The shipped 0.09/0.18 below
+    # are only the pre-calibration values and the fallback for a sequence that
+    # never reaches the sample count - fr2_xyz has 16 keyframes in 500 frames
+    # and will run at max_iters throughout, which is the base arm.
+    #
+    # THE WINDOW COSTS NOTHING. max_iters is what this arm does with adaptive
+    # mapping off, so the calibration window IS baseline behaviour; the only
+    # thing forgone is a saving that measured zero.
+    calibration_keyframes: 24
+    calibration_skip: 8
